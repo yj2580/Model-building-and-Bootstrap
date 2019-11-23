@@ -1,0 +1,24 @@
+---
+title: "p8105_hw6_yj2580"
+author: "yj2580"
+date: "11/19/2019"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(tidyverse)
+```
+
+## Problem 1
+```{r}
+birthweight = read_csv("./data/birthweight.csv") %>%
+  janitor::clean_names() %>%
+  mutate(babysex = as.factor(babysex), 
+         frace = as.factor(frace), 
+         malform = as.factor(malform), 
+         mrace = as.factor(mrace), 
+         )
+```
+
