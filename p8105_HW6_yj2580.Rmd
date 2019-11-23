@@ -106,7 +106,7 @@ weather_df =
   select(name, id, everything())
 boot_strap = 
   weather_df %>%
-  modelr::bootstrap(n = 100) %>% 
+  modelr::bootstrap(n = 5000) %>% 
   mutate(
     models = map(strap, ~lm(data = . , tmax ~ tmin)),
     results1 = map(models, broom::tidy), 
@@ -117,7 +117,38 @@ boot_strap =
   group_by(r.squared, adj.r.squared) %>% 
   summarize(log_beta = sum(log(estimate)))
 head(boot_strap, 10)
-quantile(pull(boot_strap, log_beta),c(0.025,0.975))
+```
+
+### The distribution of R Squared
+
+```{r}
+boot_strap %>%
+  ggplot(aes(x = r.squared)) +
+  geom_density() +
+  labs(title = "The distribution of R Squared", x = "R Squared")
+```
+
+From the plot, r squared basically follows normal distribution, although it is slightly left skewed.
+
+```{r}
 quantile(pull(boot_strap, r.squared),c(0.025,0.975))
 ```
 
+The 95% confidence interval for r squared is (0.894, 0.927)
+
+### The distribution of log(β^0*β^1)
+
+```{r}
+boot_strap %>%
+  ggplot(aes(x = log_beta)) +
+  geom_density() +
+  labs(title = "The distribution of log(β^0*β^1)", x = "log(β^0*β^1)")
+```
+
+From the plot, log(β^0*β^1) basically follows normal distribution, although it is slightly left skewed.
+
+```{r}
+quantile(pull(boot_strap, log_beta),c(0.025,0.975))
+```
+
+The 95% confidence interval for log(β^0*β^1) is (1.964, 2.058)
