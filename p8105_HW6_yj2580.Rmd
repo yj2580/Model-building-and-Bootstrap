@@ -9,16 +9,115 @@ output: github_document
 knitr::opts_chunk$set(echo = TRUE)
 library(readr)
 library(tidyverse)
+library(modelr)
 ```
 
 ## Problem 1
+
+### Clean data and check for missing value
+
 ```{r}
 birthweight = read_csv("./data/birthweight.csv") %>%
   janitor::clean_names() %>%
   mutate(babysex = as.factor(babysex), 
          frace = as.factor(frace), 
          malform = as.factor(malform), 
-         mrace = as.factor(mrace), 
+         mrace = as.factor(mrace)
          )
+head(birthweight, 10) %>%
+  knitr::kable()
+
+colSums(is.na(birthweight)) %>%
+  knitr::kable()
+```
+
+When cleaning the data, I transfer "babysex", "frace", "malform" and "mrace" from numeric variables into factor variables. From the second table, we can see no missing value in this dataset. The dataset has 4342 observations with 20 variables.
+
+### Model building
+
+```{r}
+all = lm(data = birthweight, bwt ~.)
+step(all, direction = "both")
+```
+
+After doing a both-direction stepwise algorithm by AIC, the optimal model is "bwt ~ babysex + bhead + blength + delwt + fincome + gaweeks + mheight + mrace + parity + ppwt + smoken".
+
+```{r}
+opt_model = lm(data = birthweight, bwt ~ babysex + bhead + blength + delwt + fincome + gaweeks + mheight + mrace + parity + ppwt + smoken)
+summary(opt_model)
+birthweight %>%
+  modelr::add_predictions(opt_model) %>%
+  modelr::add_residuals(opt_model) %>%
+  ggplot(aes(x = pred, y = resid)) + 
+  geom_point(color = "red", alpha = 0.3) +
+  geom_smooth(method = "lm") +
+  labs(x = "prediction", y = "residual", title = "Model residuals against fitted values")
+```
+
+### Compare my model to two others:
+
+```{r}
+other1 = lm(data = birthweight, bwt ~ blength + gaweeks)
+other2 = lm(data = birthweight, bwt ~ bhead + blength + babysex + bhead*blength*babysex)
+cv_df = 
+  crossv_mc(birthweight, 100) 
+cv_df =
+  cv_df %>% 
+  mutate(
+    train = map(train, as_tibble),
+    test = map(test, as_tibble))
+cv_df = 
+  cv_df %>% 
+  mutate(opt  = map(train, ~lm(data = ., bwt ~ babysex + bhead + blength + delwt + fincome + gaweeks + mheight + mrace + parity + ppwt + smoken)),
+         other1  = map(train, ~lm(data = ., bwt ~ blength + gaweeks)),
+         other2  = map(train, ~lm(data = ., bwt ~ bhead + blength + babysex + bhead*blength*babysex))) %>% 
+  mutate(rmse_opt = map2_dbl(opt, test, ~rmse(model = .x, data = .y)),
+         rmse_other1 = map2_dbl(other1, test, ~rmse(model = .x, data = .y)),
+         rmse_other2 = map2_dbl(other2, test, ~rmse(model = .x, data = .y)))
+cv_df %>% 
+  select(starts_with("rmse")) %>% 
+  pivot_longer(
+    everything(),
+    names_to = "model", 
+    values_to = "rmse",
+    names_prefix = "rmse_") %>% 
+  mutate(model = fct_inorder(model)) %>% 
+  ggplot(aes(x = model, y = rmse)) + geom_violin() +
+  labs(title = "Comparison between models")
+```
+
+As shown in the plot, my model has the smallest rmse, which means that it is a better fit that the other two models. Moreover, the model with interaction term is better than the model with only main predictors.
+
+## Problem 2
+
+### create bootstrap samples
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+boot_strap = 
+  weather_df %>%
+  modelr::bootstrap(n = 100) %>% 
+  mutate(
+    models = map(strap, ~lm(data = . , tmax ~ tmin)),
+    results1 = map(models, broom::tidy), 
+    results2 = map(models, broom::glance)) %>% 
+  select(-strap, -models) %>% 
+  unnest(results1, results2) %>% 
+  mutate(log_es = log(estimate)) %>%
+  group_by(r.squared, adj.r.squared) %>% 
+  summarize(log_beta = sum(log(estimate)))
+head(boot_strap, 10)
+quantile(pull(boot_strap, log_beta),c(0.025,0.975))
+quantile(pull(boot_strap, r.squared),c(0.025,0.975))
 ```
 
